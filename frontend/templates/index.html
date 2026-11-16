@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CGWB HydroEval · Quality-Controlled Groundwater Level Platform</title>
+
+  <!-- Typography: Plus Jakarta Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- CesiumJS CSS -->
+  <link rel="stylesheet" href="https://cesium.com/downloads/cesiumjs/releases/1.117/Build/Cesium/Widgets/widgets.css" />
+  <!-- Custom Design Tokens & UI Styles -->
+  <link rel="stylesheet" href="/static/css/style.css?v=20261116h">
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- CesiumJS -->
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.117/Build/Cesium/Cesium.js"></script>
+</head>
+<body>
+
+  <div class="app-layout">
+
+    <!-- Left Collapsible Sidebar (Unified Navigation + Station Intelligence) -->
+    <aside id="appSidebar" class="app-sidebar">
+      <div class="sidebar-header">
+        <div class="brand-block">
+          <div class="brand-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path>
+            </svg>
+          </div>
+          <div class="brand-title-wrap">
+            <span class="brand-name">CGWB HydroEval</span>
+          </div>
+        </div>
+        <button id="sidebarToggleBtn" class="sidebar-toggle-btn" title="Toggle Sidebar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+        </button>
+      </div>
+
+      <div class="sidebar-scrollable">
+        <!-- DWLR Live Sync Card (Top of Sidebar) -->
+        <div class="sidebar-dwlr-sync-card">
+          <div class="dwlr-sync-header">
+            <div class="dwlr-sync-dot" id="dwlrSyncDot"></div>
+            <span class="dwlr-sync-label">DWLR Live Data</span>
+            <span class="dwlr-cycle-badge">6h Cycle</span>
+          </div>
+          <div class="dwlr-sync-info">
+            <span class="dwlr-sync-time-label">Last Sync:</span>
+            <span id="sidebarDwlrLastSync" class="dwlr-sync-time">--</span>
+          </div>
+          <button id="btnSidebarSyncDwlr" class="btn-dwlr-sync">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            Sync Now
+          </button>
+        </div>
+        <!-- Sidebar: Well Search Bar -->
+        <div class="sidebar-search-wrap" style="margin: 0 12px 10px; position: relative;">
+          <div class="sidebar-search-input-group">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="position:absolute;left:9px;top:50%;transform:translateY(-50%);opacity:0.5;pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="globalWellSearchInput" class="sidebar-well-search-input" placeholder="Search 2,759 wells, cities, districts..." autocomplete="off" spellcheck="false">
+            <span id="globalSearchCountBadge" class="sidebar-search-badge">2,759</span>
+            <button type="button" id="btnClearWellSearch" class="sidebar-search-clear" title="Clear" style="display:none;">&times;</button>
+          </div>
+          <div id="globalWellSearchResults" class="sidebar-search-dropdown" style="display:none;">
+            <div class="sidebar-search-dropdown-header">
+              <span id="searchDropdownStatusText">All 2,759 Wells</span>
+            </div>
+            <div id="wellSearchResultsList" class="sidebar-search-results-list"></div>
+          </div>
+          <div id="globalWellSearchWrap" style="display:none">
+            <select id="globalWellSelector" style="display:none">
+              <option value="GW-0001">GW-0001 - Alampur</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Sidebar: KPI Mini-Cards (2x2 grid) -->
+        <div class="sidebar-kpi-grid">
+          <div class="sidebar-kpi-card" data-target="calculator-view" title="National average water depth">
+            <span class="sidebar-kpi-label">Avg Depth</span>
+            <span class="sidebar-kpi-val" id="kpiAvgDepth">--</span>
+            <span class="sidebar-kpi-unit">mbgl</span>
+          </div>
+          <div class="sidebar-kpi-card" data-target="calculator-view" title="Mean monsoon recharge">
+            <span class="sidebar-kpi-label">Recharge</span>
+            <span class="sidebar-kpi-val" id="kpiAvgRecharge">--</span>
+            <span class="sidebar-kpi-unit">m Δh</span>
+          </div>
+          <div class="sidebar-kpi-card safe" data-target="geo-view" title="Safe extraction wells">
+            <span class="sidebar-kpi-label">Safe</span>
+            <span class="sidebar-kpi-val" id="kpiSafeCount" style="color:var(--status-safe)">--</span>
+            <span class="sidebar-kpi-unit">wells</span>
+          </div>
+          <div class="sidebar-kpi-card danger" data-target="risk-view" title="Over-exploited wells">
+            <span class="sidebar-kpi-label">Over-Exp.</span>
+            <span class="sidebar-kpi-val" id="kpiOverExploitedCount" style="color:var(--status-over)">--</span>
+            <span class="sidebar-kpi-unit">critical</span>
+          </div>
+        </div>
+        <!-- Hidden stubs for JS compatibility -->
+        <span id="kpiTotalWells" style="display:none">2759</span>
+        <span id="kpiStates" style="display:none">19</span>
+
+        <nav class="sidebar-nav">
+          <!-- Navigation Group 1: Spatial Intelligence -->
+          <div class="nav-group">
+            <div class="nav-group-title">Spatial Intelligence</div>
+            <button class="nav-item active" data-target="geo-view" data-title="Geospatial Map Explorer">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+              <span class="nav-label">Geospatial Explorer</span>
+            </button>
+          </div>
+
+          <!-- Navigation Group 2: Hydrological Analysis -->
+          <div class="nav-group">
+            <div class="nav-group-title">Resource Assessment</div>
+            <button class="nav-item" data-target="calculator-view" data-title="Dynamic Recharge Calculator">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>
+              <span class="nav-label">Recharge Calculator</span>
+            </button>
+            <button class="nav-item" data-target="risk-view" data-title="Aquifer Depletion & Health Diagnostic Engine">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <span class="nav-label">Depletion & Health</span>
+            </button>
+          </div>
+        </nav>
+
+        <!-- Station Intelligence & Telemetry in Sidebar (Shifted from Right Drawer) -->
+        <div id="stationDrawer" class="sidebar-station-card">
+          <div class="sidebar-station-top">
+            <div>
+              <div style="font-size: 0.65rem; color: var(--accent-cyan); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">Selected Well Telemetry</div>
+              <h3 id="drawerStationName" class="station-heading" style="font-size: 1.05rem; margin-top: 2px;">Station Telemetry</h3>
+              <div class="station-sub" style="margin-top: 3px;">
+                <code id="drawerStationCode">GW-0000</code>
+                <span id="drawerStatusBadge" class="status-pill safe">Safe</span>
+              </div>
+            </div>
+          </div>
+
+
+          <!-- Hydrogeological Parameter Card -->
+          <div class="param-grid" style="margin-top: 10px;">
+            <div class="param-item">
+              <span class="param-label">State</span>
+              <span id="drawerState" class="param-value">--</span>
+            </div>
+            <div class="param-item">
+              <span class="param-label">District</span>
+              <span id="drawerDistrict" class="param-value">--</span>
+            </div>
+            <div class="param-item">
+              <span class="param-label">Water Depth</span>
+              <span id="drawerDepth" class="param-value" style="color: #fff;">--</span>
+            </div>
+            <div class="param-item">
+              <span class="param-label">Aquifer Type</span>
+              <span id="drawerAquifer" class="param-value">--</span>
+            </div>
+            <div class="param-item">
+              <span class="param-label">Well Depth</span>
+              <span id="drawerWellDepth" class="param-value">--</span>
+            </div>
+            <div class="param-item">
+              <span class="param-label">Specific Yield (Sy)</span>
+              <span id="drawerSpecificYield" class="param-value" style="color: var(--accent-cyan);">--</span>
+            </div>
+            <div class="param-item" style="grid-column: span 2;">
+              <span class="param-label">22-Year Depletion Rate</span>
+              <span id="drawerTrend" class="param-value" style="color: var(--accent-cyan);">--</span>
+            </div>
+          </div>
+
+          <!-- Quick Navigation Actions -->
+          <div style="display: flex; gap: 8px; margin-top: 10px;">
+            <button id="btnDrawerRunCalculator" class="btn-primary" style="flex: 1; justify-content: center; font-size: 0.74rem; padding: 7px 6px;">
+              Open Well Calculator
+            </button>
+            <button id="btnDrawerRunHealth" class="btn-secondary" style="flex: 1; justify-content: center; font-size: 0.74rem; padding: 7px 6px;">
+              View Health & Weather
+            </button>
+          </div>
+
+          <!-- 2. Water Quality (pH) Card -->
+          <div id="phCard" class="sidebar-info-card" style="margin-top: 12px;">
+            <div class="sidebar-info-card-header">
+              <span class="sidebar-info-card-icon">💧</span>
+              <span class="sidebar-info-card-title">Water Quality (pH)</span>
+              <span id="phStatusBadge" class="status-pill safe" style="font-size:0.65rem;padding:2px 8px;">--</span>
+            </div>
+            <div class="sidebar-info-card-body">
+              <div class="param-grid" style="margin-top:6px;">
+                <div class="param-item">
+                  <span class="param-label">pH Value</span>
+                  <span id="phValue" class="param-value" style="font-size:1.1rem;font-weight:700;color:#38bdf8;">--</span>
+                </div>
+                <div class="param-item">
+                  <span class="param-label">Drinking Water</span>
+                  <span id="phDrinkable" class="param-value">--</span>
+                </div>
+                <div class="param-item" style="grid-column:span 2;">
+                  <span class="param-label">Agriculture Use</span>
+                  <span id="phAgriculture" class="param-value">--</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. Groundwater Level Prediction (Δh) Card with ↻ Update -->
+          <div id="predictionCard" class="sidebar-info-card" style="margin-top: 10px;">
+            <div class="sidebar-info-card-header">
+              <span class="sidebar-info-card-icon">📈</span>
+              <span class="sidebar-info-card-title">Level Prediction (Δh)</span>
+              <button id="btnRefreshPrediction" class="btn-dwlr-sync" style="padding:3px 10px;font-size:0.68rem;margin-left:auto;" title="Re-run prediction with live rainfall">↻ Update</button>
+            </div>
+            <div class="sidebar-info-card-body" id="predictionBody">
+              <div style="color:var(--text-muted);font-size:0.72rem;padding:8px 0;">Select a well to load prediction…</div>
+            </div>
+          </div>
+
+          <!-- 4. Recharge Recommendations Card -->
+          <div id="rechargeRecsCard" class="sidebar-info-card" style="margin-top: 10px;">
+            <div class="sidebar-info-card-header">
+              <span class="sidebar-info-card-icon">🌱</span>
+              <span class="sidebar-info-card-title">Recharge Recommendations</span>
+            </div>
+            <div class="sidebar-info-card-body">
+              <ul id="rechargeRecsList" class="sidebar-recs-list">
+                <li style="color:var(--text-muted);font-size:0.72rem;">Select a well to view recommendations…</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- 5. Chart 1: Historical Depth (2000–2022) 92 Quarters -->
+          <div class="drawer-chart-card" style="margin-top: 12px;">
+            <div class="drawer-chart-title">
+              <span>Historical Depth (2000–2022)</span>
+              <span style="font-size: 0.65rem; color: var(--text-muted);">92 Quarters</span>
+            </div>
+            <div class="drawer-chart-wrapper" style="height: 155px;">
+              <canvas id="stationTrendCanvas"></canvas>
+            </div>
+          </div>
+
+          <!-- 6. Chart 2: Seasonal Profile (Pre vs Post-Monsoon) -->
+          <div class="drawer-chart-card" style="margin-top: 10px;">
+            <div class="drawer-chart-title">
+              <span>Seasonal Profile</span>
+              <span style="font-size: 0.65rem; color: var(--text-muted);">Pre vs Post-Monsoon</span>
+            </div>
+            <div class="drawer-chart-wrapper" style="height: 140px;">
+              <canvas id="stationSeasonalCanvas"></canvas>
+            </div>
+          </div>
+
+          <!-- 7. Chart 3: Annual Monsoon Recharge (Δh) -->
+          <div class="drawer-chart-card" style="margin-top: 10px; margin-bottom: 8px;">
+            <div class="drawer-chart-title">
+              <span>Annual Monsoon Recharge (Δh)</span>
+              <span style="font-size: 0.65rem; color: var(--text-muted);">2000–2022</span>
+            </div>
+            <div class="drawer-chart-wrapper" style="height: 145px;">
+              <canvas id="stationRechargeCanvas"></canvas>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="system-status">
+          <div class="pulse-dot"></div>
+          <span class="sidebar-footer-text">REST APIs Online</span>
+        </div>
+        <a href="/docs" target="_blank" class="sidebar-footer-text" style="color: var(--accent-cyan); text-decoration: none; font-size: 0.72rem; font-weight: 600;">Swagger ↗</a>
+      </div>
+
+      <!-- Draggable Sidebar Manual Resize Handle -->
+      <div id="sidebarResizeHandle" class="sidebar-resize-handle" title="Drag to manually resize sidebar width"></div>
+    </aside>
+
+    <!-- Main Content Workspace -->
+    <div class="main-wrapper">
+
+      <!-- Topbar/Ribbon removed - all controls now in sidebar -->
+      <!-- Hidden stubs for JS compatibility -->
+      <span id="breadcrumbCurrent" style="display:none">Geospatial Explorer</span>
+      <span id="kpiTotalWells" style="display:none">2759</span>
+      <span id="kpiStates" style="display:none">19</span>
+      <span id="kpiAvgDepth" style="display:none">--</span>
+      <span id="kpiAvgRecharge" style="display:none">--</span>
+      <span id="kpiSafeCount" style="display:none">--</span>
+      <span id="kpiOverExploitedCount" style="display:none">--</span>
+      <div id="globalWellSearchWrap" style="display:none">
+        <input type="text" id="globalWellSearchInput">
+        <span id="globalSearchCountBadge"></span>
+        <button id="btnClearWellSearch"></button>
+        <div id="globalWellSearchResults">
+          <span id="searchDropdownStatusText"></span>
+          <div id="wellSearchResultsList"></div>
+        </div>
+        <select id="globalWellSelector" style="display:none">
+          <option value="GW-0001">GW-0001 - Alampur</option>
+        </select>
+      </div>
+
+      <!-- Viewports -->
+
+      <!-- 1. Geospatial Explorer Viewport -->
+      <section id="geo-view" class="view-viewport active">
+        <div class="geo-container">
+          <div class="map-frame">
+            <div id="leafletMap"></div>
+            <div id="cesiumGlobe"></div>
+
+            <!-- Floating Control Bar -->
+            <div class="map-control-bar">
+              <div class="btn-toggle-group">
+                <button id="btnView2D" class="mode-toggle-btn active">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                  2D GIS Map
+                </button>
+                <button id="btnView3D" class="mode-toggle-btn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+                  3D Globe
+                </button>
+              </div>
+
+              <select id="mapFilterState" class="select-filter">
+                <option value="">All States</option>
+              </select>
+
+              <select id="mapFilterStatus" class="select-filter">
+                <option value="">All Statuses</option>
+                <option value="Safe">Safe</option>
+                <option value="Semi-Critical">Semi-Critical</option>
+                <option value="Critical">Critical</option>
+                <option value="Over-Exploited">Over-Exploited</option>
+              </select>
+            </div>
+
+            <!-- Interactive Map Legend (Click to Filter Map & Table) -->
+            <div class="map-legend-card">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span class="legend-header" style="margin-bottom: 0;">Aquifer Status</span>
+                <span id="btnResetMapStatusFilter" style="font-size: 0.65rem; color: var(--accent-cyan); cursor: pointer; text-decoration: underline;" title="Reset status filter to show all wells">Show All</span>
+              </div>
+              <div class="legend-row map-legend-row-clickable" data-status="Safe" title="Click to isolate Safe unconfined aquifers (< 7 mbgl)">
+                <span class="legend-indicator" style="background: var(--status-safe);"></span> Safe (&lt; 7m, Stable)
+              </div>
+              <div class="legend-row map-legend-row-clickable" data-status="Semi-Critical" title="Click to isolate Semi-Critical aquifers (7–12 mbgl)">
+                <span class="legend-indicator" style="background: var(--status-semi);"></span> Semi-Critical (7–12m)
+              </div>
+              <div class="legend-row map-legend-row-clickable" data-status="Critical" title="Click to isolate Critical aquifers (12–25 mbgl)">
+                <span class="legend-indicator" style="background: var(--status-crit);"></span> Critical (12–25m)
+              </div>
+              <div class="legend-row map-legend-row-clickable" data-status="Over-Exploited" title="Click to isolate Over-Exploited / severely depleting aquifers (> 25 mbgl)">
+                <span class="legend-indicator" style="background: var(--status-over);"></span> Over-Exploited (&gt; 25m or Depleting)
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Monitoring Wells Directory Viewport -->
+      <section id="stations-view" class="view-viewport">
+        <div class="table-viewport-container">
+          <div class="filter-action-strip">
+            <div class="search-field-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="tableSearchInput" class="search-field" placeholder="Search by station code, name, or district...">
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <select id="tableFilterState" class="select-filter">
+                <option value="">All States</option>
+              </select>
+              <select id="tableFilterStatus" class="select-filter">
+                <option value="">All Statuses</option>
+                <option value="Safe">Safe</option>
+                <option value="Semi-Critical">Semi-Critical</option>
+                <option value="Critical">Critical</option>
+                <option value="Over-Exploited">Over-Exploited</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="data-panel-card">
+            <table class="pro-table">
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Station Name</th>
+                  <th>State</th>
+                  <th>District</th>
+                  <th>Latest Depth</th>
+                  <th>Trend (m/yr)</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="stationsTableBody">
+                <!-- Injected dynamically -->
+              </tbody>
+            </table>
+            <div class="table-footer">
+              <span id="tablePageInfo">Loading stations...</span>
+              <div style="display: flex; gap: 8px;">
+                <button id="prevPageBtn" class="btn-secondary" disabled>Previous</button>
+                <button id="nextPageBtn" class="btn-secondary">Next</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. DWLR Real-Time Telemetry Viewport (6-Hour Interval Updates) -->
+      <section id="dwlr-view" class="view-viewport">
+        <div class="table-viewport-container">
+          <div class="data-panel-card" style="padding: 16px; margin-bottom: 4px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+              <div>
+                <h3 style="font-size: 1.05rem; font-weight: 700; color: #fff;">Digital Water Level Recorder (DWLR) Automated Telemetry</h3>
+                <p style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">
+                  Automatic GPRS telemetric observations recorded at 6-hour intervals (00:00, 06:00, 12:00, 18:00 UTC/IST) from India-WRIS / CGWB sensors.
+                </p>
+              </div>
+              <div style="display: flex; gap: 12px; align-items: center;">
+                <div class="telemetry-pill">
+                  <span>Last Sync:</span>
+                  <strong id="dwlrLastSync">--</strong>
+                </div>
+                <div class="telemetry-pill">
+                  <span>Status:</span>
+                  <strong id="dwlrSyncStatus" style="color: var(--status-safe);">ONLINE & UPDATED</strong>
+                </div>
+                <button id="btnDwlrRefresh" class="btn-secondary">
+                  <span>Refresh Telemetry</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="data-panel-card">
+            <table class="pro-table">
+              <thead>
+                <tr>
+                  <th>Station Code</th>
+                  <th>Station Name</th>
+                  <th>Observation Timestamp</th>
+                  <th>Water Level Depth</th>
+                  <th>Acquisition Mode</th>
+                  <th>Source</th>
+                </tr>
+              </thead>
+              <tbody id="dwlrTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. State Analytics Viewport (FIXED: High-Visibility Horizontal Comparison Chart) -->
+      <section id="analytics-view" class="view-viewport">
+        <div class="table-viewport-container">
+          <div class="data-panel-card" style="padding: 20px; height: 560px; margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <div>
+                <h3 style="font-size: 1.05rem; font-weight: 700; color: #fff;">State-wise Mean Water Table Depth vs Monsoon Recharge</h3>
+                <p style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">
+                  Horizontal comparison of unconfined aquifer depth (mbgl) against annual monsoon recovery (Δh in meters) across all 19 states.
+                </p>
+              </div>
+            </div>
+            <div style="position: relative; height: 460px; width: 100%;">
+              <canvas id="stateComparisonCanvas"></canvas>
+            </div>
+          </div>
+
+          <div class="data-panel-card">
+            <table class="pro-table">
+              <thead>
+                <tr>
+                  <th>State</th>
+                  <th>Stations</th>
+                  <th>Mean Depth (mbgl)</th>
+                  <th>Monsoon Recharge (m)</th>
+                  <th>Specific Yield (Sy)</th>
+                  <th>Critical / Over-Exploited Proportion</th>
+                </tr>
+              </thead>
+              <tbody id="stateAnalyticsTableBody">
+                <!-- Injected dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5. Dynamic Recharge Calculator Viewport (Location Trace & Pre-Filled for Selected Well) -->
+      <section id="calculator-view" class="view-viewport">
+        <div class="workbench-grid">
+
+          <!-- Prominent Location Trace Banner for Selected Well -->
+          <div id="calcLocationBanner" class="well-location-banner">
+            <div class="well-location-header">
+              <div class="well-title-group">
+                <div class="well-pin-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                </div>
+                <div>
+                  <div style="font-size: 0.7rem; color: var(--accent-cyan); font-weight: 700; text-transform: uppercase;">Selected Station Catchment Location Trace</div>
+                  <h3 id="calcTraceName" class="well-trace-name">Station Name · Location</h3>
+                </div>
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <span id="calcTraceStatus" class="status-pill safe">Safe</span>
+                <button id="btnCalcLocateMap" class="btn-secondary clickable-chip" style="padding: 4px 10px; font-size: 0.72rem;" title="Pan map to this well's exact location">📍 Locate on Map</button>
+                <button id="btnCalcViewHealth" class="btn-secondary clickable-chip" style="padding: 4px 10px; font-size: 0.72rem;" title="Switch to well health and Open-Meteo weather diagnostics">🩺 View Health</button>
+              </div>
+            </div>
+
+            <div class="well-trace-chips">
+              <div class="well-chip">Code: <code id="calcTraceCode">GW-0001</code></div>
+              <div class="well-chip">State: <strong id="calcTraceState">--</strong></div>
+              <div class="well-chip">District: <strong id="calcTraceDistrict">--</strong></div>
+              <div class="well-chip">Coordinates: <strong id="calcTraceCoords">--</strong></div>
+              <div class="well-chip">Aquifer: <strong id="calcTraceAquifer">--</strong></div>
+              <div class="well-chip">Assigned Sy: <strong id="calcTraceSy" style="color: var(--accent-cyan);">--</strong></div>
+              <div class="well-chip">Annual Recharge (Δh): <strong id="calcTraceDeltaH" style="color: var(--status-safe);">--</strong></div>
+            </div>
+          </div>
+
+          <!-- Left Card: Form pre-filled with this well's parameters -->
+          <div class="card-panel">
+            <h2 id="calcFormTitle" class="card-panel-title">Dynamic Recharge Calculator</h2>
+            <p class="card-panel-desc">
+              Pre-filled with hydrogeological attributes of the selected well. Adjust the watershed area below or click presets to calculate dynamic recharge volume in Hectare-Meters and Million Cubic Meters.
+            </p>
+
+            <form id="rechargeCalcForm">
+              <div class="form-row">
+                <label class="form-label" for="calcArea">Catchment Assessment Area (sq km)</label>
+                <input type="number" id="calcArea" class="form-control" value="100" step="1" required min="1">
+                <div class="preset-chip-group">
+                  <span style="font-size: 0.7rem; color: var(--text-muted); align-self: center;">Presets:</span>
+                  <button type="button" class="preset-chip" data-area="25">25 km² (Micro-watershed)</button>
+                  <button type="button" class="preset-chip" data-area="50">50 km² (Sub-basin)</button>
+                  <button type="button" class="preset-chip active" data-area="100">100 km² (Block)</button>
+                  <button type="button" class="preset-chip" data-area="500">500 km² (District Basin)</button>
+                </div>
+                <span class="form-hint" style="margin-top: 4px;">Total area of assessment micro-watershed (1 sq km = 100 hectares).</span>
+              </div>
+
+              <div class="form-row">
+                <label class="form-label" for="calcSy">Aquifer Specific Yield (Sy) - From Station Geological Map</label>
+                <input type="number" id="calcSy" class="form-control" value="0.030" step="0.001" min="0.001" max="0.30" required>
+                <span class="form-hint">Unconfined storage coefficient assigned to this well from CGWB quality-controlled map.</span>
+              </div>
+
+              <div class="form-row">
+                <label class="form-label" for="calcDeltaH">Water Table Rise Δh (meters) - Mean Monsoon Fluctuation</label>
+                <input type="number" id="calcDeltaH" class="form-control" value="2.80" step="0.05" required>
+                <span class="form-hint">Water table rise between pre-monsoon (May) and post-monsoon (Nov) for this well.</span>
+              </div>
+
+              <button type="submit" class="btn-primary" style="width: 100%; margin-top: 10px; justify-content: center;">
+                Calculate Dynamic Recharge for This Well
+              </button>
+            </form>
+
+            <div id="calcResultBox" class="output-hero-box" style="display: none;">
+              <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Recharge Volumetric Output for Catchment</div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 8px;">
+                <div>
+                  <div style="font-size: 0.7rem; color: var(--text-muted);">Recharge Volume (ham)</div>
+                  <div id="resHam" class="output-hero-metric" style="font-size: 1.25rem;">--</div>
+                </div>
+                <div>
+                  <div style="font-size: 0.7rem; color: var(--text-muted);">Recharge Volume (MCM)</div>
+                  <div id="resMcm" class="output-hero-metric" style="font-size: 1.25rem; color: #fff;">--</div>
+                </div>
+                <div style="grid-column: span 2;">
+                  <div style="font-size: 0.7rem; color: var(--text-muted);">Equivalent Water Column</div>
+                  <div id="resDepth" style="font-size: 0.95rem; font-weight: 600; color: #fff;">--</div>
+                </div>
+              </div>
+              <div id="resInterp" style="font-size: 0.76rem; color: var(--text-secondary); margin-top: 10px; border-top: 1px solid var(--border-subtle); padding-top: 8px;">
+                --
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Card: Methodology & Catchment Hydrology -->
+          <div class="card-panel">
+            <h3 class="card-panel-title" style="font-size: 0.95rem;">Well Catchment Hydrological Method</h3>
+            <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.6;">
+              <p style="margin-bottom: 12px;">
+                According to Central Ground Water Board (CGWB) Water Level Fluctuation (WLF) framework, dynamic recharge for this station is governed by:
+              </p>
+              <div style="background: var(--bg-app); padding: 12px; border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 0.74rem; border: 1px solid var(--border-subtle); margin-bottom: 14px;">
+                Recharge (ham) = Area (ha) × Δh (m) × Sy<br>
+                Recharge (MCM) = Area (sq km) × Δh (m) × Sy
+              </div>
+              <p style="margin-bottom: 10px;">
+                <strong>Specific Yield Context:</strong> Represents the ratio of the volume of water which a saturated rock or soil will yield by gravity to its total volume.
+              </p>
+              <p>
+                This calculation quantifies the annual extractable buffer without triggering progressive water table decline in this aquifer zone.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6. Aquifer Depletion Risk Engine & Well Health Diagnostics (Open-Meteo Integrated) -->
+      <section id="risk-view" class="view-viewport">
+        <div class="workbench-grid">
+
+          <!-- Prominent Location Trace Banner for Selected Well -->
+          <div id="riskLocationBanner" class="well-location-banner">
+            <div class="well-location-header">
+              <div class="well-title-group">
+                <div class="well-pin-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                </div>
+                <div>
+                  <div style="font-size: 0.7rem; color: var(--accent-cyan); font-weight: 700; text-transform: uppercase;">Diagnostic Health & Depletion Analysis</div>
+                  <h3 id="riskTraceName" class="well-trace-name">Well Station · Health Diagnostics</h3>
+                </div>
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <span id="riskTraceStatus" class="status-pill safe">Safe</span>
+                <button id="btnRiskLocateMap" class="btn-secondary clickable-chip" style="padding: 4px 10px; font-size: 0.72rem;" title="Pan map to this well's exact location">📍 Locate on Map</button>
+                <button id="btnRiskOpenCalc" class="btn-secondary clickable-chip" style="padding: 4px 10px; font-size: 0.72rem;" title="Switch to dynamic recharge calculator for this well">🧮 Open Calculator</button>
+              </div>
+            </div>
+
+            <div class="well-trace-chips">
+              <div class="well-chip">Code: <code id="riskTraceCode">GW-0001</code></div>
+              <div class="well-chip">State: <strong id="riskTraceState">--</strong></div>
+              <div class="well-chip">District: <strong id="riskTraceDistrict">--</strong></div>
+              <div class="well-chip">Coordinates: <strong id="riskTraceCoords">--</strong></div>
+              <div class="well-chip">Latest Depth: <strong id="riskTraceDepth" style="color: #fff;">-- mbgl</strong></div>
+              <div class="well-chip">22-Year Trend Rate: <strong id="riskTraceTrend" style="color: var(--accent-cyan);">-- m/yr</strong></div>
+            </div>
+          </div>
+
+          <!-- Left Card: Live Weather & Rainfall Impact (Open-Meteo API) -->
+          <div class="card-panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <h2 class="card-panel-title">Real-Time Weather & Rain Impact</h2>
+              <span class="nav-badge live" style="font-size: 0.65rem;">Open-Meteo Live</span>
+            </div>
+            <p class="card-panel-desc">
+              Live meteorological telemetry at well coordinates. Evaluates rainfall infiltration impact on water table recovery.
+            </p>
+
+            <!-- 4 Weather Metric Chips -->
+            <div class="weather-kpi-grid">
+              <div class="weather-kpi-item">
+                <span class="weather-kpi-label">Temperature</span>
+                <span id="weatherTemp" class="weather-kpi-val">--</span>
+                <span class="weather-kpi-sub">Ambient</span>
+              </div>
+              <div class="weather-kpi-item">
+                <span class="weather-kpi-label">Relative Humidity</span>
+                <span id="weatherHumidity" class="weather-kpi-val">--</span>
+                <span class="weather-kpi-sub">Moisture level</span>
+              </div>
+              <div class="weather-kpi-item">
+                <span class="weather-kpi-label">Past 7d Rainfall</span>
+                <span id="weatherPastRain" class="weather-kpi-val" style="color: var(--accent-cyan);">--</span>
+                <span class="weather-kpi-sub">Observed</span>
+              </div>
+              <div class="weather-kpi-item">
+                <span class="weather-kpi-label">Forecast 7d Rain</span>
+                <span id="weatherForecastRain" class="weather-kpi-val" style="color: var(--status-safe);">--</span>
+                <span class="weather-kpi-sub">Expected</span>
+              </div>
+            </div>
+
+            <!-- 14-Day Rainfall Timeline Bar Chart -->
+            <div style="margin-bottom: 14px;">
+              <div style="font-size: 0.74rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">
+                14-Day Precipitation Influx (Past 7d Observed vs 7d Forecast)
+              </div>
+              <div style="position: relative; height: 160px; width: 100%;">
+                <canvas id="wellRainfallChartCanvas"></canvas>
+              </div>
+            </div>
+
+            <!-- Infiltration & Replenishment Summary Box -->
+            <div class="output-hero-box" style="margin-top: 0;">
+              <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Rainfall Infiltration Impact on Aquifer</div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px;">
+                <div>
+                  <div style="font-size: 0.7rem; color: var(--text-muted);">Infiltration (RIF norm)</div>
+                  <div id="rainInfiltrationMm" class="output-hero-metric" style="font-size: 1.15rem;">-- mm</div>
+                </div>
+                <div>
+                  <div style="font-size: 0.7rem; color: var(--text-muted);">Est. Water Table Rise</div>
+                  <div id="rainWaterTableRiseM" class="output-hero-metric" style="font-size: 1.15rem; color: var(--status-safe);">-- m</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Card: Well Health Diagnostics & Tailored Recommendations -->
+          <div class="card-panel">
+            <h2 class="card-panel-title">Well Health Card & Recommendations</h2>
+            <p class="card-panel-desc">
+              Synthesized evaluation of historical depletion, aquifer vulnerability, and recent precipitation recharge buffer.
+            </p>
+
+            <!-- Health Score Meter -->
+            <div class="health-score-container">
+              <div>
+                <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Well Health Index</div>
+                <div id="wellHealthScoreNum" class="health-score-num" style="color: var(--status-safe);">--</div>
+                <div id="wellHealthStatusText" style="font-size: 0.85rem; font-weight: 600; color: #fff; margin-top: 4px;">--</div>
+              </div>
+              <span id="wellHealthCategoryBadge" class="status-pill safe" style="font-size: 0.9rem; padding: 6px 14px;">Safe</span>
+            </div>
+
+            <!-- Recommendation Action List -->
+            <div class="recs-box">
+              <div class="recs-box-title">Site-Specific Actionable Recommendations:</div>
+              <ul id="wellHealthRecsList" class="recs-list">
+                <li>Loading recommendations for selected well...</li>
+              </ul>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- Entrypoint Script -->
+  <script type="module" src="/static/js/app.js?v=20261116h"></script>
+</body>
+</html>

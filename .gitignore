@@ -11,6 +11,12 @@ venv/
 env/
 ENV/
 
+# Environment Variables & Local Secrets
+.env
+.env.local
+.env.*.local
+*.env
+
 # Testing & Coverage
 .pytest_cache/
 .coverage
